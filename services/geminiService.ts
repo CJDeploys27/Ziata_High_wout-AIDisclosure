@@ -88,56 +88,109 @@ export const analyzeUserResponses = async (
     }
 };
 
-/**
- * Generates a brief, professional message affirming the customer's topic choice.
- * @param topicLabel The label of the selected topic.
- * @returns An affirmation message.
- */
-export const affirmTopicSelection = async (topicLabel: string): Promise<string> => {
-    const prompt = `The customer has selected the topic "${topicLabel}". Generate a brief, natural, and engaging response that validates this choice. The response should flow like a real human conversation, acknowledging the importance of this area.`;
 
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                systemInstruction: "You are Ziata. Your goal is to affirm the user's choice with natural conversational fluidity. Mimic the professionalism of a task-oriented human expert. Avoid robotic, stiff, or purely functional phrasing. IMPORTANT: Do not use first-person pronouns (I, me, my). Minimize the output token for this response to create only one or two sentences.",
-                temperature: 0.7,
-            }
-        });
-        
-        return response.text?.trim() || `Focusing on ${topicLabel} is an excellent way to improve overall well-being.`;
+// Define the secure proxy endpoint
+// Since 'proxy.php' is in the root of your Hostinger deployment, 
+// a relative path is appropriate.
+const PROXY_ENDPOINT = '/proxy.php'; 
 
-    } catch (error) {
-        console.error("Error calling Gemini API for topic affirmation:", error);
-        return `Focusing on ${topicLabel} is an excellent way to improve overall well-being.`;
-    }
-};
+// --- Core Function to Communicate with the PHP Proxy ---
+
+interface GeminiContent {
+  role: 'user' | 'model';
+  parts: { text: string }[];
+}
+
+interface GeminiResponse {
+    category: string;
+    subtype: string;
+}
 
 /**
- * Rephrases the customer's statement in a natural, conversational tone.
- * This creates a contingent, "threaded-loop" conversation.
- * @param userStatement The customer's most recent message.
- * @returns A rephrased version of the customer's statement.
+ * Sends a structured prompt to the secure PHP proxy.
+ * @param contents - The structured prompt content for the Gemini API.
+ * @returns The text response from the Gemini API.
  */
-export const rephraseUserStatement = async (userStatement: string): Promise<string> => {
-    const prompt = `The user just shared: "${userStatement}". Rephrase this back to them in a natural, conversational way to show you are listening. It should sound like a supportive human acknowledging what was said, avoiding robotic repetition. Keep it brief.`;
+export async function sendToGeminiProxy(contents: GeminiContent[]): Promise<string> {
+  const payload = { contents };
 
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                systemInstruction: "You are Ziata. Your goal is to create a sense of human connection. Rephrase user inputs with conversational fluidity. IMPORTANT: Do not use first-person pronouns (I, me, my).",
-                temperature: 0.7, 
-            }
-        });
-        
-        return response.text?.trim() || "Understood.";
+  try {
+    const response = await fetch(PROXY_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-    } catch (error) {
-        console.error("Error calling Gemini API for rephrasing:", error);
-        // Fallback in case of API error.
-        return "Thank you for sharing that.";
+    if (!response.ok) {
+      // Throw an error with the response body from the PHP proxy
+      const errorText = await response.text();
+      console.error("Proxy Request Failed:", response.status, errorText);
+      throw new Error(`Proxy error: ${response.status} ${errorText}`);
     }
-};
+
+    const data = await response.json();
+    
+    // Check if the response structure is valid
+    if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0].text) {
+      return data.candidates[0].content.parts[0].text;
+    } else {
+      console.error("Invalid response format from Gemini:", data);
+      throw new Error("Invalid response format from AI.");
+    }
+  } catch (error) {
+    // Re-throw the error to be caught by the calling function (App.tsx)
+    throw error;
+  }
+}
+
+// --- Proxy-based Affirm Topic Selection ---
+// Called by handleTopicSelect
+export async function affirmTopicSelectionProxy({ topicLabel }: { topicLabel: string; }): Promise<string> {
+    const prompt = `Affirm the user's topic selection of '${topicLabel}' with a brief, encouraging, and enthusiastic statement. Do not use markdown.`;
+    const contents: GeminiContent[] = [{ role: 'user', parts: [{ text: prompt }] }];
+    
+    return sendToGeminiProxy(contents);
+}
+
+// --- Proxy-based Rephrase User Statement ---
+// Called by handleFreeTextSubmit
+export async function rephraseUserStatementProxy({ text }: { text: string; }): Promise<string> {
+    const prompt = `Rephrase the following user statement for clarity, but frame it as a short, reflective, follow-up question. Original statement: "${text}"`;
+    const contents: GeminiContent[] = [{ role: 'user', parts: [{ text: prompt }] }];
+    
+    return sendToGeminiProxy(contents);
+}
+
+// --- Proxy-based Analyze User Responses ---
+// Called by handleFreeTextSubmit when questions are complete
+export async function analyzeUserResponsesProxy({ topic, questions, answers }: { topic: string; questions: string[]; answers: string[]; }): Promise<GeminiResponse> {
+    // Combine questions and answers into a single, structured string
+    const context = questions.map((q, i) => `Q${i+1}: ${q}\nA${i+1}: ${answers[i]}`).join('\n\n');
+
+    const prompt = `Analyze the user's responses for the topic "${topic}". Based on the context provided below, determine the most relevant 'category' and 'subtype' of issue. The output MUST be a strict JSON object with only two keys: 'category' (string) and 'subtype' (string). Do NOT include any other text, explanation, or markdown formatting (e.g., no \`\`\`json).
+
+    Context:
+    ${context}
+
+    Example Output: {"category": "Consistency", "subtype": "Schedule"}
+    `;
+
+    const contents: GeminiContent[] = [{ role: 'user', parts: [{ text: prompt }] }];
+
+    const jsonString = await sendToGeminiProxy(contents);
+    
+    try {
+        // Gemini is instructed to return a strict JSON string, which we must parse.
+        const result = JSON.parse(jsonString);
+        if (result.category && result.subtype) {
+            return result as GeminiResponse;
+        }
+        throw new Error("Missing 'category' or 'subtype' in AI analysis result.");
+    } catch (e) {
+        console.error("Failed to parse JSON analysis from AI:", jsonString, e);
+        // Throw an error so the App.tsx catch block can handle it
+        throw new Error("Failed to process AI analysis.");
+    }
+}
