@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Message, Sender, Topic, ChatState, Dialogue } from './types';
 import { DIALOGUE_FLOW, INITIAL_MESSAGES } from './constants';
-import { analyzeUserResponses, rephraseUserStatement, affirmTopicSelection } from './services/geminiService';
+import { analyzeUserResponsesProxy, rephraseUserStatementProxy, affirmTopicSelectionProxy } from './services/geminiService';
 import ChatMessage from './components/ChatMessage';
 import TypingIndicator from './components/TypingIndicator';
 
@@ -73,7 +73,7 @@ const App: React.FC = () => {
     currentTopicRef.current = topic;
     addMessage(`I'd like to discuss: ${label}`, Sender.User);
     
-    await sendZiataMessage(() => affirmTopicSelection(label));
+    await sendZiataMessage(() => affirmTopicSelectionProxy({ topicLabel: label }));
 
     setChatState(ChatState.ASKING_QUESTIONS);
     await sendZiataMessage(() => DIALOGUE_FLOW[topic].questions[0]);
@@ -88,7 +88,7 @@ const App: React.FC = () => {
     if (!topic) return;
     
     // 1. Send contingent rephrasing
-    await sendZiataMessage(() => rephraseUserStatement(text));
+    await sendZiataMessage(() => rephraseUserStatementProxy({ text }));
     
     currentQuestionIndexRef.current++;
     const nextQuestionIndex = currentQuestionIndexRef.current;
@@ -102,7 +102,7 @@ const App: React.FC = () => {
       await sendZiataMessage("Thank you for sharing. Let me analyze your responses to provide a personalized recommendation...");
 
       try {
-        const result = await analyzeUserResponses(topic, dialogue.questions, userAnswersRef.current);
+        const result = await analyzeUserResponsesProxy({ topic, questions: dialogue.questions, answers: userAnswersRef.current });
         const recommendation = DIALOGUE_FLOW[topic].responses[result.category]?.[result.subtype];
 
         if (recommendation) {
