@@ -1,10 +1,107 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Message, Sender, Topic, ChatState, Dialogue } from './types';
 import { DIALOGUE_FLOW, INITIAL_MESSAGES } from './constants';
-import { analyzeUserResponsesProxy, rephraseUserStatementProxy, affirmTopicSelectionProxy } from './services/geminiService';
+// Note: We are now defining these functions locally, so we remove the import from './services/geminiService'
+// import { analyzeUserResponses, rephraseUserStatement, affirmTopicSelection } from './services/geminiService';
 import ChatMessage from './components/ChatMessage';
 import TypingIndicator from './components/TypingIndicator';
+
+// --- NEW PROXY/SERVICE LOGIC INTEGRATION ---
+
+const PROXY_ENDPOINT = '/proxy.php'; 
+
+interface GeminiContent {
+  role: 'user' | 'model';
+  parts: { text: string }[];
+}
+
+interface GeminiResponse {
+    category: string;
+    subtype: string;
+}
+
+/**
+ * Sends a structured prompt to the secure PHP proxy.
+ * This function replaces the direct Gemini SDK calls.
+ */
+async function sendToGeminiProxy(contents: GeminiContent[]): Promise<string> {
+  const payload = { contents };
+
+  try {
+    const response = await fetch(PROXY_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Proxy Request Failed:", response.status, errorText);
+      // Throw a specific error that App.tsx can handle
+      throw new Error(`Proxy error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    
+    // Extract text from the standard Gemini response structure
+    if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts[0].text) {
+      return data.candidates[0].content.parts[0].text;
+    } else {
+      console.error("Invalid response format from Gemini:", data);
+      throw new Error("Invalid response format from AI.");
+    }
+  } catch (error) {
+    // Let App.tsx handle the UI fallout
+    throw error;
+  }
+}
+
+// --- UPDATED SERVICE FUNCTIONS ---
+
+async function affirmTopicSelection(topicLabel: string): Promise<string> {
+    const prompt = `Affirm the user's topic selection of '${topicLabel}' with a brief, encouraging, and enthusiastic statement. Do not use markdown.`;
+    const contents: GeminiContent[] = [{ role: 'user', parts: [{ text: prompt }] }];
+    
+    return sendToGeminiProxy(contents);
+}
+
+async function rephraseUserStatement(text: string): Promise<string> {
+    const prompt = `Rephrase the following user statement for clarity, but frame it as a short, reflective, follow-up question. Original statement: "${text}"`;
+    const contents: GeminiContent[] = [{ role: 'user', parts: [{ text: prompt }] }];
+    
+    return sendToGeminiProxy(contents);
+}
+
+async function analyzeUserResponses(topic: string, questions: string[], answers: string[]): Promise<GeminiResponse> {
+    const context = questions.map((q, i) => `Q${i+1}: ${q}\nA${i+1}: ${answers[i]}`).join('\n\n');
+
+    const prompt = `Analyze the user's responses for the topic "${topic}". Based on the context provided below, determine the most relevant 'category' and 'subtype' of issue. The output MUST be a strict JSON object with only two keys: 'category' (string) and 'subtype' (string). Do NOT include any other text, explanation, or markdown formatting (e.g., no \`\`\`json).
+
+    Context:
+    ${context}
+
+    Example Output: {"category": "Consistency", "subtype": "Schedule"}
+    `;
+
+    const contents: GeminiContent[] = [{ role: 'user', parts: [{ text: prompt }] }];
+
+    const jsonString = await sendToGeminiProxy(contents);
+    
+    try {
+        const result = JSON.parse(jsonString);
+        if (result.category && result.subtype) {
+            return result as GeminiResponse;
+        }
+        throw new Error("Missing 'category' or 'subtype' in AI analysis result.");
+    } catch (e) {
+        console.error("Failed to parse JSON analysis from AI:", jsonString, e);
+        throw new Error("Failed to process AI analysis.");
+    }
+}
+// --- END NEW PROXY/SERVICE LOGIC INTEGRATION ---
+
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
@@ -73,7 +170,8 @@ const App: React.FC = () => {
     currentTopicRef.current = topic;
     addMessage(`I'd like to discuss: ${label}`, Sender.User);
     
-    await sendZiataMessage(() => affirmTopicSelectionProxy({ topicLabel: label }));
+    // Calls the local, updated service function
+    await sendZiataMessage(() => affirmTopicSelection(label));
 
     setChatState(ChatState.ASKING_QUESTIONS);
     await sendZiataMessage(() => DIALOGUE_FLOW[topic].questions[0]);
@@ -87,8 +185,8 @@ const App: React.FC = () => {
     const topic = currentTopicRef.current;
     if (!topic) return;
     
-    // 1. Send contingent rephrasing
-    await sendZiataMessage(() => rephraseUserStatementProxy({ text }));
+    // 1. Send contingent rephrasing (Calls the local, updated service function)
+    await sendZiataMessage(() => rephraseUserStatement(text));
     
     currentQuestionIndexRef.current++;
     const nextQuestionIndex = currentQuestionIndexRef.current;
@@ -102,7 +200,8 @@ const App: React.FC = () => {
       await sendZiataMessage("Thank you for sharing. Let me analyze your responses to provide a personalized recommendation...");
 
       try {
-        const result = await analyzeUserResponsesProxy({ topic, questions: dialogue.questions, answers: userAnswersRef.current });
+        // Calls the local, updated service function
+        const result = await analyzeUserResponses(topic, dialogue.questions, userAnswersRef.current);
         const recommendation = DIALOGUE_FLOW[topic].responses[result.category]?.[result.subtype];
 
         if (recommendation) {
