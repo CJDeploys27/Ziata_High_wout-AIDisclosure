@@ -1,14 +1,1 @@
-# Correct MIME type for modern JavaScript files (.js)
-AddType application/javascript .js
 
-# This is often needed for modern JS modules (.mjs)
-AddType application/javascript .mjs
-
-<IfModule mod_mime>
-  AddType application/javascript .js
-</IfModule>
-
-# Ensures Content-Type is set explicitly for client-side execution
-<FilesMatch "\.(js|mjs)$">
-  Header set Content-Type "application/javascript"
-</FilesMatch>
