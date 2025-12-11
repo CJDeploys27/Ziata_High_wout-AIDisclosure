@@ -1,14 +1,18 @@
-# Correct MIME type for modern JavaScript files (.js)
-AddType application/javascript .js
+# FINAL ATTEMPT: Force Content-Type for all built JavaScript files
 
-# This is often needed for modern JS modules (.mjs)
-AddType application/javascript .mjs
-
-<IfModule mod_mime>
-  AddType application/javascript .js
+<IfModule mod_headers>
+    # Check if the file is a .js or .mjs file
+    <FilesMatch "\.(js|mjs)$">
+        # Force the correct header value, regardless of global default
+        Header set Content-Type "application/javascript"
+        # Optional: Clear other server headers that might interfere
+        Header unset Last-Modified
+        Header unset ETag
+    </FilesMatch>
 </IfModule>
 
-# Ensures Content-Type is set explicitly for client-side execution
-<FilesMatch "\.(js|mjs)$">
-  Header set Content-Type "application/javascript"
-</FilesMatch>
+# Keep the traditional AddType as a fallback
+<IfModule mod_mime>
+    AddType application/javascript .js
+    AddType application/javascript .mjs
+</IfModule>
