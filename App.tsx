@@ -7,7 +7,7 @@ import TypingIndicator from './components/TypingIndicator';
 // --- CONFIGURATION ---
 // TODO: Replace this with your actual Google Cloud Run URL
 // Example: "https://ziata-backend-x829s.a.run.app"
-const BACKEND_URL = "https://ziata-high-wout-aidisclosure-771555879264.europe-west1.run.app"; 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://ziata-high-wout-aidisclosure-771555879264.europe-west1.run.app"; 
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
@@ -32,7 +32,7 @@ const App: React.FC = () => {
   // --- NEW BACKEND CONNECTION FUNCTION ---
   const sendMessageToBackend = async (prompt: string): Promise<string> => {
     try {
-      const response = await fetch(`${https://ziata-high-wout-aidisclosure-771555879264.europe-west1.run.app}/api/chat`, {
+      const response = await fetch(`${BACKEND_URL}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
