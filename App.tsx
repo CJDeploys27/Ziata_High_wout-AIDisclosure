@@ -7,7 +7,7 @@ import TypingIndicator from './components/TypingIndicator';
 // --- CONFIGURATION ---
 // TODO: Replace this with your actual Google Cloud Run URL
 // Example: "https://ziata-backend-x829s.a.run.app"
-const BACKEND_URL = "https://YOUR-CLOUD-RUN-URL.a.run.app"; 
+const BACKEND_URL = "https://ziata-high-wout-aidisclosure-771555879264.europe-west1.run.app"; 
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
