@@ -32,7 +32,7 @@ const App: React.FC = () => {
   // --- NEW BACKEND CONNECTION FUNCTION ---
   const sendMessageToBackend = async (prompt: string): Promise<string> => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/chat`, {
+      const response = await fetch(`${https://ziata-high-wout-aidisclosure-771555879264.europe-west1.run.app}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
