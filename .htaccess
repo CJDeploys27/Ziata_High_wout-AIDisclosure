@@ -1,18 +1,25 @@
-# FINAL ATTEMPT: Force Content-Type for all built JavaScript files
+# --- PART 1: The Routing Fix (CRITICAL for React) ---
+# This ensures that if a user refreshes the page, they don't get a 404.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
 
-<IfModule mod_headers>
-    # Check if the file is a .js or .mjs file
+# --- PART 2: Your MIME Type Fix (Safety for Loading Scripts) ---
+# This ensures browsers accept your JavaScript files correctly.
+<IfModule mod_headers.c>
     <FilesMatch "\.(js|mjs)$">
-        # Force the correct header value, regardless of global default
         Header set Content-Type "application/javascript"
-        # Optional: Clear other server headers that might interfere
         Header unset Last-Modified
         Header unset ETag
     </FilesMatch>
 </IfModule>
 
-# Keep the traditional AddType as a fallback
-<IfModule mod_mime>
+<IfModule mod_mime.c>
     AddType application/javascript .js
     AddType application/javascript .mjs
 </IfModule>
