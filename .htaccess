@@ -1,5 +1,9 @@
-# --- PART 1: The Routing Fix (CRITICAL for React) ---
-# This ensures that if a user refreshes the page, they don't get a 404.
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType text/css .css
+  AddType image/svg+xml .svg
+</IfModule>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
@@ -7,19 +11,4 @@
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule . /index.html [L]
-</IfModule>
-
-# --- PART 2: Your MIME Type Fix (Safety for Loading Scripts) ---
-# This ensures browsers accept your JavaScript files correctly.
-<IfModule mod_headers.c>
-    <FilesMatch "\.(js|mjs)$">
-        Header set Content-Type "application/javascript"
-        Header unset Last-Modified
-        Header unset ETag
-    </FilesMatch>
-</IfModule>
-
-<IfModule mod_mime.c>
-    AddType application/javascript .js
-    AddType application/javascript .mjs
 </IfModule>
