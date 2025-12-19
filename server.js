@@ -4,68 +4,51 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// --- CONFIGURATION FOR ES MODULES (Fixes "__dirname" issues) ---
+// --- PATH CONFIGURATION ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// 1. Allow Hostinger to talk to this server (CORS)
-app.use(cors({
-  origin: '*', 
-  methods: ['POST', 'GET', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
-}));
+// Debugging: Print where the server thinks the website files are
+console.log("------------------------------------------------");
+console.log("SERVER STARTING");
+console.log("Looking for website files in:", path.join(__dirname, 'dist'));
+console.log("------------------------------------------------");
 
-// 2. Allow the server to read JSON data
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// 3. Initialize the AI
+// --- API ROUTES ---
 const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  console.error('CRITICAL ERROR: GEMINI_API_KEY is not set in Environment Variables!');
-}
-const genAI = new GoogleGenerativeAI(apiKey);
+const genAI = new GoogleGenerativeAI(apiKey || "API_KEY_MISSING");
 
-// 4. The Chat Route (The Brain)
 app.post('/api/chat', async (req, res) => {
   try {
+    if (!apiKey) throw new Error("API Key is missing on Hostinger");
     const { message } = req.body;
-    
-    if (!message || typeof message !== 'string') {
-      return res.status(400).json({ reply: 'Error: Message is invalid.' });
-    }
-
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
     const result = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text: message }] }],
     });
-
-    const reply = result.response.text();
-    res.json({ reply }); 
-
+    res.json({ reply: result.response.text() });
   } catch (err) {
     console.error("AI Error:", err);
-    res.status(500).json({ reply: 'My brain is offline momentarily. Please try again.' });
+    res.status(500).json({ reply: 'System Error: Check Server Logs' });
   }
 });
 
-// -------------------------------------------------------------------------
-// 6. SERVE THE FRONTEND (The Body) - NEW SECTION
-// -------------------------------------------------------------------------
+// --- SERVE THE FRONTEND ---
 
-// Tell Express to serve the static files from the "dist" folder (where Vite builds your site)
+// 1. Force Express to serve files from the 'dist' folder
+// IMPORTANT: This must match the folder name created by 'npm run build'
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// The "Catch-All" Route:
-// If the user goes to a page like /about or refreshes the page, send them index.html
-// This MUST be the last route in the file!
+// 2. Catch-all: If file not found, send the index.html inside 'dist'
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
-
-// -------------------------------------------------------------------------
 
 app.listen(PORT, () => {
   console.log(`Backend listening on port ${PORT}`);
