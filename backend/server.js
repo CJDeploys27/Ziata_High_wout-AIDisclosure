@@ -1,44 +1,37 @@
-import express from 'express';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+const express = require('express');
+const cors = require('cors');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
-
-// --- THE FIX: MANUAL HEADERS ONLY (No Library) ---
-app.use((req, res, next) => {
-  // 1. Force these headers onto EVERY response
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
-
-  // 2. Intercept the browser's "Can I connect?" check immediately
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200); // We send 200, not 204!
-  }
-  next();
-});
-
+app.use(cors());
 app.use(express.json());
 
-// --- PROOF OF LIFE ROUTE ---
-app.get('/', (req, res) => {
-  res.send('UPDATED: The CORS Fix is Live! (Status 200)'); 
-});
-
 const apiKey = process.env.GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(apiKey);
+console.log("Server starting. Key available:", apiKey ? "YES (" + apiKey.substring(0,4) + "...)" : "NO");
+
+const genAI = new GoogleGenerativeAI(apiKey || "-");
 
 app.post('/api/chat', async (req, res) => {
   try {
+    if (!apiKey) throw new Error("API Key is missing from Environment Variables.");
+
     const { message } = req.body;
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: message }] }],
-    });
-    const reply = result.response.text();
-    res.json({ reply });
+    
+    // Use gemini-2.0-flash-exp (latest model as of Dec 2024)
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+    const result = await model.generateContent(message);
+    const response = await result.response;
+    const text = response.text();
+
+    res.json({ reply: text });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error' });
+    console.error("CRASH REPORT:", err);
+    res.status(500).json({ 
+      error: "Backend Crash", 
+      details: err.message
+    });
   }
 });
 
